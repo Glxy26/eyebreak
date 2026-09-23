@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EyeBreak Custom</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #0d1117; color: #f0f6fc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    .card { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 28px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 8px; color: #58a6ff; }
+    .status { font-size: 0.95rem; color: #8b949e; margin-bottom: 20px; }
+    .timer-display { font-size: 3.8rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -1px; margin: 15px 0; color: #3fb950; }
+    .timer-display.rest { color: #f85149; }
+    .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 600; font-size: 0.85rem; margin-bottom: 15px; background: rgba(63, 185, 80, 0.15); color: #3fb950; border: 1px solid rgba(63, 185, 80, 0.3); }
+    .badge.rest { background: rgba(248, 81, 73, 0.15); color: #f85149; border-color: rgba(248, 81, 73, 0.3); }
+    .btn { background: #238636; color: white; border: none; padding: 14px 20px; font-size: 1rem; font-weight: 600; border-radius: 8px; width: 100%; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+    .btn:hover { background: #2ea043; }
+    .btn-secondary { background: #21262d; border: 1px solid #363b42; color: #c9d1d9; margin-top: 8px; }
+    .btn-secondary:hover { background: #30363d; }
+    .settings { margin-top: 24px; padding-top: 20px; border-top: 1px solid #21262d; text-align: left; }
+    .settings label { font-size: 0.85rem; color: #8b949e; display: block; margin-bottom: 6px; }
+    .inputs { display: flex; gap: 10px; margin-bottom: 12px; }
+    input[type="time"] { background: #0d1117; border: 1px solid #30363d; color: white; padding: 8px 10px; border-radius: 6px; width: 100%; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>EyeBreak</h1>
+    <p class="status" id="scheduleStatus">Cargando horario...</p>
+
+    <div class="badge" id="phaseBadge">TIEMPO DE TRABAJO</div>
+    <div class="timer-display" id="timerDisplay">20:00</div>
+
+    <button class="btn" id="startBtn">Iniciar Temporizador</button>
+
+    <div class="settings">
+      <label>Horario activo diario:</label>
+      <div class="inputs">
+        <input type="time" id="startTime" value="08:00">
+        <input type="time" id="endTime" value="18:00">
+      </div>
+      <button class="btn btn-secondary" id="notifBtn">Activar Notificaciones</button>
+    </div>
+  </div>
+
+  <script>
+    let workSecs = 20 * 60;
+    let restSecs = 20;
+    let currentSecs = workSecs;
+    let isWorking = true;
+    let isRunning = false;
+    let timerInterval = null;
+
+    const display = document.getElementById('timerDisplay');
+    const badge = document.getElementById('phaseBadge');
+    const startBtn = document.getElementById('startBtn');
+    const scheduleStatus = document.getElementById('scheduleStatus');
+
+    function updateDisplay() {
+      let m = Math.floor(currentSecs / 60);
+      let s = currentSecs % 60;
+      display.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function checkSchedule() {
+      const now = new Date();
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      
+      const [sh, sm] = document.getElementById('startTime').value.split(':').map(Number);
+      const [eh, em] = document.getElementById('endTime').value.split(':').map(Number);
+      
+      const startMin = sh * 60 + sm;
+      const endMin = eh * 60 + em;
+
+      if (currentMin >= startMin && currentMin < endMin) {
+        scheduleStatus.textContent = "🟢 Dentro del horario activo";
+        return true;
+      } else {
+        scheduleStatus.textContent = "🌙 Fuera de horario (Pausado)";
+        return false;
+      }
+    }
+
+    function playSound() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        osc.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } catch(e) {}
+    }
+
+    function sendNotification(title, body) {
+      playSound();
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body });
+      }
+    }
+
+    function tick() {
+      if (!checkSchedule()) return;
+
+      if (currentSecs > 0) {
+        currentSecs--;
+        updateDisplay();
+      } else {
+        if (isWorking) {
+          isWorking = false;
+          currentSecs = restSecs;
+          badge.textContent = "¡MIRA A 20 PIES DE DISTANCIA!";
+          badge.classList.add('rest');
+          display.classList.add('rest');
+          sendNotification("👀 ¡Descanso de ojos!", "Mira un objeto a 20 pies durante 20 segundos.");
+        } else {
+          isWorking = true;
+          currentSecs = workSecs;
+          badge.textContent = "TIEMPO DE TRABAJO";
+          badge.classList.remove('rest');
+          display.classList.remove('rest');
+          sendNotification("✅ ¡De vuelta al trabajo!", "Puedes continuar trabajando.");
+        }
+        updateDisplay();
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      if (isRunning) {
+        clearInterval(timerInterval);
+        isRunning = false;
+        startBtn.textContent = "Iniciar Temporizador";
+      } else {
+        if ("Notification" in window && Notification.permission !== "granted") {
+          Notification.requestPermission();
+        }
+        timerInterval = setInterval(tick, 1000);
+        isRunning = true;
+        startBtn.textContent = "Pausar Temporizador";
+      }
+    });
+
+    document.getElementById('notifBtn').addEventListener('click', () => {
+      if ("Notification" in window) {
+        Notification.requestPermission().then(permission => {
+          alert("Permisos de notificación: " + permission);
+        });
+      }
+    });
+
+    updateDisplay();
+    checkSchedule();
+  </script>
+</body>
+</html>
